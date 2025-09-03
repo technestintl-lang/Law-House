@@ -1,0 +1,17 @@
+{
+  "name": "legisflow-cemac-shared",
+  "version": "0.1.0",
+  "description": "Shared types and utilities for LegisFlow: CEMAC",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "clean": "rimraf dist"
+  },
+  "devDependencies": {
+    "rimraf": "^3.0.2",
+    "typescript": "^4.8.3"
+  }
+}
+

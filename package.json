@@ -1,0 +1,32 @@
+{
+  "name": "legisflow-cemac",
+  "version": "0.1.0",
+  "description": "Legal Practice Management for CEMAC Region",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build:shared && npm run build:backend && npm run build:frontend",
+    "build:shared": "cd shared && npm run build",
+    "build:backend": "cd backend && npm run build",
+    "build:frontend": "cd frontend && npm run build",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && npm run start:dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "start": "cd backend && npm run start:prod",
+    "clean": "rimraf node_modules && rimraf backend/node_modules && rimraf frontend/node_modules && rimraf shared/node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^7.4.0",
+    "rimraf": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "author": "TechNest International",
+  "license": "UNLICENSED"
+}
+
