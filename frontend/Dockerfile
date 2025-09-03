@@ -2,10 +2,16 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
+# Install dependencies needed for build
+RUN apk add --no-cache python3 make g++
+
 # Copy package.json files
 COPY package.json ./
 COPY frontend/package.json ./frontend/
 COPY shared/package.json ./shared/
+
+# Create workspace structure
+RUN mkdir -p frontend/src shared/src
 
 # Install dependencies
 RUN npm install
@@ -30,7 +36,7 @@ COPY frontend/package.json ./frontend/
 COPY shared/package.json ./shared/
 
 # Install production dependencies
-RUN npm install --production
+RUN npm install --omit=dev
 
 # Copy built files from builder stage
 COPY --from=builder /app/shared/dist ./shared/dist
@@ -46,4 +52,3 @@ EXPOSE 3001
 
 # Start the application
 CMD ["npm", "run", "start"]
-
