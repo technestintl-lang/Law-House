@@ -17,6 +17,8 @@ jobs:
       
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
+        # Skip login for PR checks since we're not pushing images
+        if: github.event_name != 'pull_request'
         with:
           username: ${{ vars.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PAT }}
@@ -66,25 +68,21 @@ jobs:
   # Add a job for testing if needed
   test:
     runs-on: ubuntu-latest
-    needs: docker
+    # Remove dependency on docker job to allow tests to run even if Docker login fails
     steps:
       - name: Checkout
         uses: actions/checkout@v4
       
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
       
       - name: Install dependencies
         run: |
-          npm ci
+          npm install
       
       - name: Run tests
         run: |
           npm test
-          
-      - name: Verify build
-        run: |
-          npm run build

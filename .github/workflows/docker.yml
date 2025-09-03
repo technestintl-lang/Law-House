@@ -29,6 +29,8 @@ jobs:
 
       - name: Log in to the Container registry
         uses: docker/login-action@v3
+        # Skip login for PR checks since we're not pushing images
+        if: github.event_name != 'pull_request'
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -54,4 +56,3 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
