@@ -1,50 +1,125 @@
-// Service Worker for LegisFlow CEMAC PWA
+// Service Worker for LegisFlow CEMAC PWA - Production Ready
 
 const CACHE_NAME = 'legisflow-cemac-v1';
+const STATIC_CACHE_NAME = 'legisflow-static-v1';
+const DYNAMIC_CACHE_NAME = 'legisflow-dynamic-v1';
+const API_CACHE_NAME = 'legisflow-api-v1';
 const OFFLINE_URL = '/offline.html';
 
-const urlsToCache = [
+// Cache expiration times
+const STATIC_CACHE_EXPIRATION = 30 * 24 * 60 * 60 * 1000; // 30 days
+const DYNAMIC_CACHE_EXPIRATION = 7 * 24 * 60 * 60 * 1000; // 7 days
+const API_CACHE_EXPIRATION = 24 * 60 * 60 * 1000; // 1 day
+
+const staticUrlsToCache = [
   '/',
   '/offline.html',
   '/favicon.ico',
   '/manifest.json',
   '/icons/icon-192x192.png',
   '/icons/icon-512x512.png',
-  // Add CSS, JS, and other static assets here
+  '/icons/badge-72x72.png',
+  // Static assets
+  '/_next/static/chunks/main.js',
+  '/_next/static/chunks/webpack.js',
+  '/_next/static/chunks/pages/_app.js',
+  '/_next/static/chunks/pages/index.js',
+  '/_next/static/chunks/pages/login.js',
+  '/_next/static/chunks/pages/dashboard.js',
+  '/_next/static/css/main.css',
+];
+
+// API routes to cache with network-first strategy
+const apiUrlsToCache = [
+  '/api/matters',
+  '/api/clients',
+  '/api/deadlines',
+  '/api/time-entries',
+];
+
+// Routes that should never be cached
+const neverCacheUrls = [
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/refresh',
 ];
 
 // Install event - cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-      .then(() => self.skipWaiting())
+    Promise.all([
+      // Cache static assets
+      caches.open(STATIC_CACHE_NAME).then((cache) => {
+        console.log('Caching static assets');
+        return cache.addAll(staticUrlsToCache);
+      }),
+      
+      // Create other caches
+      caches.open(DYNAMIC_CACHE_NAME),
+      caches.open(API_CACHE_NAME),
+      
+      // Skip waiting to activate immediately
+      self.skipWaiting()
+    ])
   );
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and claim clients
 self.addEventListener('activate', (event) => {
-  const cacheWhitelist = [CACHE_NAME];
+  const currentCaches = [STATIC_CACHE_NAME, DYNAMIC_CACHE_NAME, API_CACHE_NAME];
+  
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    Promise.all([
+      // Clean up old caches
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => {
+            if (!currentCaches.includes(cacheName)) {
+              console.log('Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            }
+          })
+        );
+      }),
+      
+      // Clean up expired items from dynamic cache
+      cleanExpiredCache(DYNAMIC_CACHE_NAME, DYNAMIC_CACHE_EXPIRATION),
+      
+      // Clean up expired items from API cache
+      cleanExpiredCache(API_CACHE_NAME, API_CACHE_EXPIRATION),
+      
+      // Claim clients to control all tabs
+      self.clients.claim()
+    ])
   );
 });
 
-// Fetch event - serve from cache or network
+// Helper function to clean expired cache items
+async function cleanExpiredCache(cacheName, maxAge) {
+  const cache = await caches.open(cacheName);
+  const requests = await cache.keys();
+  const now = Date.now();
+  
+  for (const request of requests) {
+    const response = await cache.match(request);
+    const responseDate = response.headers.get('date');
+    
+    if (responseDate) {
+      const date = new Date(responseDate).getTime();
+      if (now - date > maxAge) {
+        await cache.delete(request);
+        console.log(`Deleted expired item from ${cacheName}:`, request.url);
+      }
+    }
+  }
+}
+
+// Fetch event - advanced caching strategies
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  
   // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  if (!url.origin.startsWith(self.location.origin)) {
     return;
   }
 
@@ -52,64 +127,125 @@ self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') {
     return;
   }
-
-  // For HTML requests - network first, fallback to cache, then offline page
-  if (event.request.headers.get('Accept').includes('text/html')) {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // Cache the latest version
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-          return response;
-        })
-        .catch(() => {
-          return caches.match(event.request)
-            .then((response) => {
-              if (response) {
-                return response;
-              }
-              return caches.match(OFFLINE_URL);
-            });
-        })
-    );
+  
+  // Skip requests that should never be cached
+  if (neverCacheUrls.some(path => url.pathname.includes(path))) {
     return;
   }
 
-  // For non-HTML requests - cache first, fallback to network
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        if (response) {
-          return response;
-        }
-        
-        // Clone the request
-        const fetchRequest = event.request.clone();
-        
-        return fetch(fetchRequest)
-          .then((response) => {
-            // Check if valid response
-            if (!response || response.status !== 200 || response.type !== 'basic') {
-              return response;
-            }
-            
-            // Clone the response
-            const responseToCache = response.clone();
-            
-            // Cache the new response
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                cache.put(event.request, responseToCache);
-              });
-              
-            return response;
-          });
-      })
-  );
+  // Handle different request types with appropriate strategies
+  
+  // 1. HTML requests - Network First with Offline Fallback
+  if (event.request.headers.get('Accept')?.includes('text/html')) {
+    event.respondWith(networkFirstWithOfflineFallback(event.request));
+    return;
+  }
+  
+  // 2. API requests - Network First with Cache Fallback
+  if (url.pathname.startsWith('/api/')) {
+    // Check if it's a cacheable API route
+    const isCacheableApi = apiUrlsToCache.some(path => url.pathname.includes(path));
+    
+    if (isCacheableApi) {
+      event.respondWith(networkFirstWithCache(event.request, API_CACHE_NAME));
+    } else {
+      // For non-cacheable API routes, just use network
+      return;
+    }
+    return;
+  }
+  
+  // 3. Static assets - Cache First with Network Fallback
+  if (
+    url.pathname.startsWith('/_next/static/') || 
+    url.pathname.startsWith('/static/') ||
+    url.pathname.endsWith('.js') ||
+    url.pathname.endsWith('.css') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.jpg') ||
+    url.pathname.endsWith('.jpeg') ||
+    url.pathname.endsWith('.svg') ||
+    url.pathname.endsWith('.ico')
+  ) {
+    event.respondWith(cacheFirstWithNetwork(event.request, STATIC_CACHE_NAME));
+    return;
+  }
+  
+  // 4. Other requests - Network First with Dynamic Cache
+  event.respondWith(networkFirstWithCache(event.request, DYNAMIC_CACHE_NAME));
 });
+
+// Network First with Offline Fallback Strategy
+async function networkFirstWithOfflineFallback(request) {
+  try {
+    // Try network first
+    const networkResponse = await fetch(request);
+    
+    // Cache the successful response
+    const cache = await caches.open(DYNAMIC_CACHE_NAME);
+    cache.put(request, networkResponse.clone());
+    
+    return networkResponse;
+  } catch (error) {
+    // If network fails, try cache
+    const cachedResponse = await caches.match(request);
+    
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // If cache fails, return offline page
+    return caches.match(OFFLINE_URL);
+  }
+}
+
+// Network First with Cache Fallback Strategy
+async function networkFirstWithCache(request, cacheName) {
+  try {
+    // Try network first
+    const networkResponse = await fetch(request);
+    
+    // Cache the successful response
+    const cache = await caches.open(cacheName);
+    cache.put(request, networkResponse.clone());
+    
+    return networkResponse;
+  } catch (error) {
+    // If network fails, try cache
+    const cachedResponse = await caches.match(request);
+    
+    if (cachedResponse) {
+      return cachedResponse;
+    }
+    
+    // If both fail, throw error
+    throw error;
+  }
+}
+
+// Cache First with Network Fallback Strategy
+async function cacheFirstWithNetwork(request, cacheName) {
+  // Try cache first
+  const cachedResponse = await caches.match(request);
+  
+  if (cachedResponse) {
+    return cachedResponse;
+  }
+  
+  // If cache fails, try network
+  try {
+    const networkResponse = await fetch(request);
+    
+    // Cache the successful response
+    const cache = await caches.open(cacheName);
+    cache.put(request, networkResponse.clone());
+    
+    return networkResponse;
+  } catch (error) {
+    // If both fail, throw error
+    throw error;
+  }
+}
 
 // Background sync for offline data
 self.addEventListener('sync', (event) => {
@@ -222,4 +358,3 @@ async function openDB() {
     };
   });
 }
-
