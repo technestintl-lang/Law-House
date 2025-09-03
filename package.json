@@ -18,6 +18,7 @@
     "dev:frontend": "cd frontend && npm run dev",
     "start": "cd backend && npm run start:prod",
     "start:frontend": "cd frontend && npm run start",
+    "test": "echo \"No tests specified yet\" && exit 0",
     "clean": "rimraf node_modules && rimraf backend/node_modules && rimraf frontend/node_modules && rimraf shared/node_modules"
   },
   "devDependencies": {
