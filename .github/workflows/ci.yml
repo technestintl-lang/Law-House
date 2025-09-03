@@ -77,11 +77,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          # Don't use npm cache since we don't have lock files yet
       
       - name: Install dependencies
         run: |
-          npm install
+          npm install --no-package-lock
       
       - name: Run tests
         run: |
