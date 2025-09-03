@@ -36,6 +36,7 @@ services:
     build:
       context: .
       dockerfile: ./backend/Dockerfile
+      target: builder
     container_name: legisflow-backend
     restart: unless-stopped
     depends_on:
@@ -66,11 +67,13 @@ services:
       - /app/shared/node_modules
     networks:
       - legisflow-network
+    command: npm run dev:backend
 
   frontend:
     build:
       context: .
       dockerfile: ./frontend/Dockerfile
+      target: builder
     container_name: legisflow-frontend
     restart: unless-stopped
     depends_on:
@@ -88,6 +91,7 @@ services:
       - /app/shared/node_modules
     networks:
       - legisflow-network
+    command: npm run dev:frontend
 
 networks:
   legisflow-network:
@@ -96,4 +100,3 @@ networks:
 volumes:
   postgres_data:
   minio_data:
-
